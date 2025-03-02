@@ -10,74 +10,91 @@ import CoreData
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
+    
+    // Use manual device fetching instead of FetchRequest
+    @State private var devices: [Device] = []
+    @State private var errorOccurred: Bool = false
+    
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+        VStack(spacing: 20) {
+            Text("Click2wakeup")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+            
+            Text("This is a status bar application")
+                .font(.headline)
+                .foregroundColor(.secondary)
+            
+            Text("Please use the status bar icon to access the application")
+                .multilineTextAlignment(.center)
+                .padding()
+            
+            if errorOccurred {
+                Text("⚠️ Core Data Error: Could not fetch devices")
+                    .foregroundColor(.red)
+                    .padding()
+            } else if devices.isEmpty {
+                Text("No devices added yet")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+                    .padding()
+                
+                Text("Click the status bar icon and select 'Add Device' to add a new device")
+                    .multilineTextAlignment(.center)
+                    .padding()
+            } else {
+                Text("Configured Devices:")
+                    .font(.headline)
+                
+                List {
+                    ForEach(devices, id: \.self) { device in
+                        HStack {
+                            Text(device.name ?? "Unnamed Device")
+                            Spacer()
+                            Text(device.mac ?? "No MAC address")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
-                .onDelete(perform: deleteItems)
+                .frame(minHeight: 100, maxHeight: 200)
             }
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-            Text("Select an item")
+            
+            Spacer()
+            
+            Text("This window is for information only")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding()
+        }
+        .padding()
+        .frame(width: 400, height: 500)
+        .onAppear {
+            // Check if view context is correct
+            // print("ContentView.onAppear - context: \(viewContext)")
+            // Use optional binding to safely unwrap the coordinator
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+    
+    private func fetchDevices() {
+        let fetchRequest: NSFetchRequest<Device> = Device.fetchRequest()
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Device.name, ascending: true)]
+        
+        do {
+            self.devices = try viewContext.fetch(fetchRequest)
+            // print("ContentView successfully fetched \(self.devices.count) devices")
+            errorOccurred = false
+        } catch {
+            // print("ContentView failed to fetch devices: \(error)")
+            errorOccurred = true
+            self.devices = []
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+    }
 }

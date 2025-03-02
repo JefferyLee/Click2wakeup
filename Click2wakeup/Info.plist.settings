@@ -1,0 +1,33 @@
+# Important Info.plist Settings for Click2wakeup
+
+The following settings should be added to your Info.plist file in Xcode:
+
+1. Add "Application is agent (UIElement)" set to "YES":
+   
+   Key: LSUIElement
+   Type: Boolean
+   Value: YES
+   
+   This ensures the app doesn't show in the Dock and only in the menu bar.
+   
+2. If needed, add "NSStatusBar" set to "YES" to allow displaying in the status bar:
+
+   Key: NSStatusBar
+   Type: Boolean  
+   Value: YES
+   
+3. To receive notifications, add "Privacy - Notifications Usage Description":
+
+   Key: NSUserNotificationUsageDescription
+   Type: String
+   Value: Allows Click2wakeup to notify you when wake packets are sent to devices.
+
+# How to add these settings in Xcode:
+
+1. Select the project in the project navigator
+2. Select the "Click2wakeup" target
+3. Select the "Info" tab
+4. Add the above keys by clicking the + button next to the last item in the list
+
+# Note:
+These settings will allow your app to appear as a status bar item without showing in the Dock. 

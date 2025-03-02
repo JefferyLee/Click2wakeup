@@ -1,0 +1,56 @@
+//
+//  NetworkPermissions.xcconfig
+//  Click2wakeup
+//
+//  Created for Click2wakeup.
+//
+
+// ===== Permissions and Signing Settings =====
+CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES
+
+// ===== Network-related Settings =====
+// Please add these settings in the project's Build Settings
+// OTHER_LDFLAGS = -framework Network -framework SystemConfiguration
+
+// ===== Required Info.plist Configuration =====
+// The following key-value pairs must be added to the project's Info.plist file:
+
+// 1. Set application as a menu bar only app (doesn't show in Dock)
+// Key: LSUIElement
+// Type: Boolean
+// Value: YES
+
+// 2. Local network usage description
+// Key: NSLocalNetworkUsageDescription
+// Type: String
+// Value: "Click2wakeup needs to access your local network to send Wake-on-LAN packets to your devices."
+
+// 3. Bonjour services (for network discovery)
+// Key: NSBonjourServices
+// Type: Array
+// Items:
+//   - _wol._udp
+//   - _sleep-proxy._udp
+
+// 4. Allow local networking
+// Key: NSAllowsLocalNetworking
+// Type: Boolean
+// Value: YES
+
+// 5. Allow LAN broadcasting
+// Key: NSAllowsBroadcasting
+// Type: Boolean
+// Value: YES
+
+// ===== Implementation Steps =====
+// 1. Select the project in Xcode
+// 2. Select Target > Info tab
+// 3. Right-click and select "Add Row" to add each key above
+// 4. Ensure keys, types, and values are entered exactly as described above
+
+// ===== Debugging Network Issues =====
+// If network permission issues persist, try:
+// 1. Check app network permissions in System Preferences
+// 2. Use Console.app to view network-related logs
+// 3. Use Activity Monitor to check if the app is being blocked by the firewall
+// 4. Try resetting app permissions: tccutil reset All com.yourdomain.Click2wakeup 

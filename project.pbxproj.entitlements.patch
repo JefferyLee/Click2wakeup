@@ -1,0 +1,21 @@
+diff --git a/Click2wakeup.xcodeproj/project.pbxproj b/Click2wakeup.xcodeproj/project.pbxproj
+index 07de16c..f35a21c 100644
+--- a/Click2wakeup.xcodeproj/project.pbxproj
++++ b/Click2wakeup.xcodeproj/project.pbxproj
+@@ -292,6 +292,7 @@
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
++				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+ 				CODE_SIGN_ENTITLEMENTS = Click2wakeup/Click2wakeup.entitlements;
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+@@ -319,6 +320,7 @@
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
++				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+ 				CODE_SIGN_ENTITLEMENTS = Click2wakeup/Click2wakeup.entitlements;
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+``` 

@@ -1,0 +1,12 @@
+//
+//  BuildSettings.xcconfig
+//  Click2wakeup
+//
+//  Created for Click2wakeup.
+//
+
+// Allow entitlements modification during build
+CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES
+
+// Include the base xcconfig file
+#include? "Config.xcconfig" 
