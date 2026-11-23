@@ -6,7 +6,7 @@
 import Foundation
 
 /// A parsed, validated 6-byte hardware address.
-struct MACAddress: Equatable {
+struct MACAddress: Hashable, Sendable {
     let bytes: [UInt8]
 
     /// Accepts `00:11:22:33:44:55`, `00-11-22-33-44-55`, `0011.2233.4455`, `001122334455`.

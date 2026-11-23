@@ -13,4 +13,5 @@ extension Logger {
     static let app = Logger(subsystem: subsystem, category: "app")
     static let persistence = Logger(subsystem: subsystem, category: "persistence")
     static let wake = Logger(subsystem: subsystem, category: "wake")
+    static let discovery = Logger(subsystem: subsystem, category: "discovery")
 }

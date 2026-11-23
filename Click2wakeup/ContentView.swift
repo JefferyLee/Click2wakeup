@@ -43,7 +43,7 @@ struct ContentView: View {
                     HStack {
                         Text(device.displayName)
                         Spacer()
-                        Text(device.displayMAC)
+                        Text(device.displayDetail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

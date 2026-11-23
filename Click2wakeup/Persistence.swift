@@ -35,8 +35,9 @@ struct PersistenceController {
         if inMemory {
             description.url = URL(fileURLWithPath: "/dev/null")
         } else {
-            if let directory = description.url?.deletingLastPathComponent() {
-                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            if let url = description.url {
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                Self.importSandboxedStoreIfNeeded(to: url)
             }
             description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
             description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
@@ -61,6 +62,35 @@ struct PersistenceController {
         context.automaticallyMergesChangesFromParent = true
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         context.shouldDeleteInaccessibleFaults = true
+    }
+
+    /// Versions ≤1.0 were sandboxed and kept their store inside the app container.
+    /// Now that the app isn't sandboxed, copy that store over once so saved devices carry over.
+    private static func importSandboxedStoreIfNeeded(to url: URL) {
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: url.path),
+              let bundleID = Bundle.main.bundleIdentifier else { return }
+
+        let oldDirectory = fm.homeDirectoryForCurrentUser
+            .appending(path: "Library/Containers/\(bundleID)/Data/Library/Application Support")
+        let oldStore = oldDirectory.appending(path: url.lastPathComponent)
+        guard fm.fileExists(atPath: oldStore.path) else { return }
+
+        // SQLite keeps recent writes in -wal/-shm side files; copy them together.
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(fileURLWithPath: oldStore.path + suffix)
+            let destination = URL(fileURLWithPath: url.path + suffix)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            do {
+                try fm.copyItem(at: source, to: destination)
+            } catch {
+                Logger.persistence.error("Couldn't import \(source.lastPathComponent, privacy: .public): \(error, privacy: .public)")
+                // Don't leave a half-copied store behind.
+                for cleanup in ["", "-wal", "-shm"] { try? fm.removeItem(atPath: url.path + cleanup) }
+                return
+            }
+        }
+        Logger.persistence.notice("Imported device store from sandbox container")
     }
 
     /// Last-resort recovery: wipe the on-disk store (including -wal/-shm) and start fresh.
@@ -91,5 +121,15 @@ extension Device {
     }
 
     var displayName: String { name ?? "Unnamed Device" }
-    var displayMAC: String { mac ?? "No MAC address" }
+
+    /// Devices with a host turn on a Mac's display over SSH; the rest use Wake-on-LAN.
+    var turnsOnDisplay: Bool { !(host ?? "").isEmpty }
+
+    /// Secondary line for lists: the host or MAC address.
+    var displayDetail: String {
+        if turnsOnDisplay { return host ?? "" }
+        return mac ?? "No MAC address"
+    }
+
+    var symbolName: String { turnsOnDisplay ? "display" : "power" }
 }

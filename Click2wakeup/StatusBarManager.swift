@@ -47,16 +47,18 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         let devices = (try? viewContext.fetch(Device.sortedByName())) ?? []
-        let wakeable = devices.filter { $0.name != nil && $0.mac != nil }
+        let wakeable = devices.compactMap(WakeTarget.init)
 
         if wakeable.isEmpty {
             let empty = NSMenuItem(title: "No Devices Added", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
-            for device in wakeable {
-                let item = menuItem(device.displayName, #selector(wakeDevice(_:)))
-                item.representedObject = device.mac
+            for target in wakeable {
+                let item = menuItem(target.name, #selector(wakeDevice(_:)))
+                item.representedObject = target
+                item.image = NSImage(systemSymbolName: target.symbolName, accessibilityDescription: nil)
+                item.toolTip = target.toolTip
                 menu.addItem(item)
             }
         }
@@ -77,25 +79,31 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
     // MARK: - Actions
 
     @objc private func wakeDevice(_ sender: NSMenuItem) {
-        guard let mac = sender.representedObject as? String else { return }
-        let name = sender.title
+        guard let target = sender.representedObject as? WakeTarget else { return }
 
         Task.detached(priority: .userInitiated) {
-            let result = WakeOnLAN.wake(macAddress: mac)
-            let body: String
-            switch result {
-            case .success(let method):
-                body = "Successfully sent wake-up packet to \(name) using \(method.rawValue)"
-            case .failure:
-                body = "Failed to send wake-up packet to \(name). Please check your network settings."
+            switch target.action {
+            case .turnOnDisplay(let host):
+                // Success is visible (the screen turns on), so only report failures.
+                if case .failure(let error) = DisplayWaker.wake(host: host) {
+                    Self.postNotification(title: "Couldn't turn on \(target.name)", body: error.message)
+                }
+            case .wakeOnLAN(let mac):
+                switch WakeOnLAN.wake(macAddress: mac) {
+                case .success(let method):
+                    Self.postNotification(title: "Wake-on-LAN",
+                                          body: "Sent wake-up packet to \(target.name) using \(method.rawValue)")
+                case .failure:
+                    Self.postNotification(title: "Wake-on-LAN",
+                                          body: "Failed to send wake-up packet to \(target.name). Please check your network settings.")
+                }
             }
-            Self.postNotification(body: body)
         }
     }
 
-    nonisolated private static func postNotification(body: String) {
+    nonisolated private static func postNotification(title: String, body: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Wake-on-LAN"
+        content.title = title
         content.body = body
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -166,5 +174,40 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
     private func present(_ window: NSWindow?) {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
+    }
+}
+
+/// A snapshot of a device's wake settings, safe to hand to a background task.
+private final class WakeTarget: NSObject, Sendable {
+    enum Action: Sendable {
+        case turnOnDisplay(host: String)
+        case wakeOnLAN(mac: String)
+    }
+
+    let name: String
+    let action: Action
+
+    init?(_ device: Device) {
+        guard let name = device.name else { return nil }
+        if device.turnsOnDisplay, let host = device.host {
+            action = .turnOnDisplay(host: host)
+        } else if let mac = device.mac {
+            action = .wakeOnLAN(mac: mac)
+        } else {
+            return nil
+        }
+        self.name = name
+    }
+
+    var symbolName: String {
+        if case .turnOnDisplay = action { return "display" }
+        return "power"
+    }
+
+    var toolTip: String {
+        switch action {
+        case .turnOnDisplay(let host): return "Turn on the display of \(host)"
+        case .wakeOnLAN(let mac): return "Send Wake-on-LAN to \(mac)"
+        }
     }
 }

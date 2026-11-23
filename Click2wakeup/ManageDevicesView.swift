@@ -70,12 +70,17 @@ struct DeviceRow: View {
     let device: Device
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Text(device.displayName)
-                .font(.headline)
-            Text(device.displayMAC)
-                .font(.subheadline)
+        HStack(spacing: 10) {
+            Image(systemName: device.symbolName)
                 .foregroundStyle(.secondary)
+                .frame(width: 20)
+            VStack(alignment: .leading) {
+                Text(device.displayName)
+                    .font(.headline)
+                Text(device.displayDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
