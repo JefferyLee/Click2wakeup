@@ -26,7 +26,7 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
         super.init()
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Wake")
+            button.image = NSImage(systemSymbolName: "wand.and.rays", accessibilityDescription: "Click2wakeup")
             button.image?.size = NSSize(width: 18, height: 18)
         }
 

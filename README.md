@@ -2,7 +2,7 @@
 
 A macOS menu bar app that wakes up other computers on your network with one click.
 
-Click the ⏻ icon in the menu bar, then click the round button next to a device (orange ☀ = turn on its screen, green ⏻ = wake it). Hovering the button shows what it does. Each device uses one of two methods:
+Click the magic wand icon in the menu bar, then click the round button next to a device (orange ☀ = turn on its screen, green ⏻ = wake it). Hovering the button shows what it does. Each device uses one of two methods:
 
 | Method | Use it for | How it works |
 |---|---|---|
@@ -17,7 +17,7 @@ Click the ⏻ icon in the menu bar, then click the round button next to a device
 
 ## Usage
 
-1. Menu bar ⏻ → **Add Device**
+1. Menu bar magic wand → **Add Device**
 2. Pick a method:
    - **Turn On Display**: click **Find Macs on Network…** and choose the Mac (or type its host name, e.g. `Ada.local`). Click **Test** to check it works.
    - **Wake-on-LAN**: enter the device's MAC address.
