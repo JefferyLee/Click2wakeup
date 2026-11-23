@@ -55,11 +55,7 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
             menu.addItem(empty)
         } else {
             for target in wakeable {
-                let item = menuItem(target.name, #selector(wakeDevice(_:)))
-                item.representedObject = target
-                item.image = NSImage(systemSymbolName: target.symbolName, accessibilityDescription: nil)
-                item.toolTip = target.toolTip
-                menu.addItem(item)
+                menu.addItem(deviceItem(for: target))
             }
         }
 
@@ -76,11 +72,25 @@ final class StatusBarManager: NSObject, NSMenuDelegate {
         return item
     }
 
+    /// A row showing the device with a visible button, so it's obvious that one click
+    /// turns the screen on (a plain menu title doesn't say what clicking it does).
+    private func deviceItem(for target: WakeTarget) -> NSMenuItem {
+        let row = DeviceMenuRow(target: target) { [weak self] in
+            self?.menu.cancelTracking()
+            self?.wake(target)
+        }
+        let hosting = NSHostingView(rootView: row)
+        hosting.frame.size = hosting.fittingSize
+
+        let item = NSMenuItem()
+        item.view = hosting
+        item.toolTip = target.toolTip
+        return item
+    }
+
     // MARK: - Actions
 
-    @objc private func wakeDevice(_ sender: NSMenuItem) {
-        guard let target = sender.representedObject as? WakeTarget else { return }
-
+    private func wake(_ target: WakeTarget) {
         Task.detached(priority: .userInitiated) {
             switch target.action {
             case .turnOnDisplay(let host):
@@ -204,10 +214,73 @@ private final class WakeTarget: NSObject, Sendable {
         return "power"
     }
 
+    /// Host or MAC address, shown under the name.
+    var detail: String {
+        switch action {
+        case .turnOnDisplay(let host): return host
+        case .wakeOnLAN(let mac): return mac
+        }
+    }
+
+    /// Shown while hovering the button, and read by VoiceOver.
+    var buttonTitle: String {
+        if case .turnOnDisplay = action { return "Click to turn on screen" }
+        return "Click to wake"
+    }
+
+    var buttonColor: Color {
+        if case .turnOnDisplay = action { return .orange }
+        return .green
+    }
+
+    var buttonSymbol: String {
+        if case .turnOnDisplay = action { return "sun.max.fill" }
+        return "power"
+    }
+
     var toolTip: String {
         switch action {
         case .turnOnDisplay(let host): return "Turn on the display of \(host)"
         case .wakeOnLAN(let mac): return "Send Wake-on-LAN to \(mac)"
         }
+    }
+}
+
+/// One device in the menu: icon, name and address on the left, an action button on the right.
+private struct DeviceMenuRow: View {
+    let target: WakeTarget
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: target.symbolName)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(target.name)
+                // Menus don't show tooltips, so hovering the button swaps the
+                // address line for a hint saying what the button does.
+                Text(isHovering ? target.buttonTitle : target.detail)
+                    .font(.caption)
+                    .foregroundStyle(isHovering ? AnyShapeStyle(target.buttonColor) : AnyShapeStyle(.secondary))
+            }
+            Spacer(minLength: 16)
+            Button(action: action) {
+                Image(systemName: target.buttonSymbol)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(target.buttonColor.opacity(isHovering ? 1 : 0.85)))
+                    .scaleEffect(isHovering ? 1.08 : 1)
+                    .animation(.easeOut(duration: 0.12), value: isHovering)
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+            .accessibilityLabel(target.buttonTitle)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .frame(minWidth: 220)
     }
 }
