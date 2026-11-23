@@ -9,269 +9,162 @@ import SwiftUI
 import CoreData
 import AppKit
 import UserNotifications
+import os
 
-class StatusBarManager: NSObject, ObservableObject {
-    private var statusBar: NSStatusBar!
-    private var statusItem: NSStatusItem!
-    private var menu: NSMenu!
-    private var viewContext: NSManagedObjectContext
-    
-    // Add and manage device window controllers
-    private var addDeviceWindowController: NSWindowController?
-    private var manageDeviceWindowController: NSWindowController?
-    
+@MainActor
+final class StatusBarManager: NSObject, NSMenuDelegate {
+    private let statusItem: NSStatusItem
+    private let menu = NSMenu()
+    private let viewContext: NSManagedObjectContext
+
+    private var addDeviceWindow: NSWindow?
+    private var manageDevicesWindow: NSWindow?
+
     init(viewContext: NSManagedObjectContext) {
-        // Store the view context
         self.viewContext = viewContext
-        
-        // Initialize superclass before setting up UI elements
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
-        
-        // Setup UI on main thread
-        if Thread.isMainThread {
-            self.setupStatusBar()
-        } else {
-            DispatchQueue.main.sync {
-                self.setupStatusBar()
-            }
-        }
-        
-        // Request notification permission
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in}
-    }
-    
-    private func setupStatusBar() {
-        // Create the status bar item
-        statusBar = NSStatusBar.system
-        statusItem = statusBar.statusItem(withLength: NSStatusItem.squareLength)
-        
-        // Initialize an empty menu
-        menu = NSMenu()
-        
-        // Configure the status bar button
+
         if let button = statusItem.button {
-            // Use fallback text first to ensure something appears
-            button.title = "⚡️"
-            
-            // Then try to use system image if available
-            if #available(macOS 11.0, *) {
-                if let powerImage = NSImage(systemSymbolName: "power", accessibilityDescription: "Wake") {
-                    button.image = powerImage
-                    button.image?.size = NSSize(width: 18, height: 18)
-                }
-            } else {
-                // For macOS 10.15 and earlier, use a custom image or keep the text
-                // You could add a custom image to Assets.xcassets and use it here
-                // print("Using text fallback for earlier macOS versions")
-            }
-        } else {
-            // print("Warning: Could not configure status bar button")
+            button.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Wake")
+            button.image?.size = NSSize(width: 18, height: 18)
         }
-        
-        // Set up the menu
-        updateMenu()
-        
-        // Set the menu for our status item
+
+        // Rebuild the menu each time it opens so it always reflects the store.
+        menu.delegate = self
         statusItem.menu = menu
+
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
-    
-    func updateMenu() {
-        // Ensure we're on the main thread for UI updates
-        if !Thread.isMainThread {
-            DispatchQueue.main.async {
-                self.updateMenu()
-            }
-            return
-        }
-        
-        // Safety check in case the menu isn't initialized yet
-        guard menu != nil else {
-            // print("Warning: Menu not initialized when updating menu")
-            return
-        }
-        
-        // print("Updating status bar menu...")
-        
-        // Clear the current menu
+
+    // MARK: - Menu
+
+    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
+        MainActor.assumeIsolated { rebuildMenu() }
+    }
+
+    private func rebuildMenu() {
         menu.removeAllItems()
-        
-        // Add all devices from Core Data using the safe fetch method
-        let devices = fetchDevicesSafely()
-        // print("Menu update - fetched \(devices.count) devices")
-        
-        // Add device items to menu
-        if devices.isEmpty {
-            let emptyItem = NSMenuItem(title: "No Devices Added", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-            // print("Menu showing 'No Devices Added'")
+
+        let devices = (try? viewContext.fetch(Device.sortedByName())) ?? []
+        let wakeable = devices.filter { $0.name != nil && $0.mac != nil }
+
+        if wakeable.isEmpty {
+            let empty = NSMenuItem(title: "No Devices Added", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
         } else {
-            for device in devices {
-                if let name = device.name, let mac = device.mac {
-                    let item = NSMenuItem(title: name, action: #selector(wakeDevice(_:)), keyEquivalent: "")
-                    item.representedObject = mac
-                    item.target = self
-                    menu.addItem(item)
-                    // print("Added device to menu: \(name)")
-                }
+            for device in wakeable {
+                let item = menuItem(device.displayName, #selector(wakeDevice(_:)))
+                item.representedObject = device.mac
+                menu.addItem(item)
             }
         }
-        
-        // Add separator
-        menu.addItem(NSMenuItem.separator())
-        
-        // Add device management options
-        let addDeviceItem = NSMenuItem(title: "Add Device", action: #selector(showAddDeviceWindow), keyEquivalent: "")
-        addDeviceItem.target = self
-        menu.addItem(addDeviceItem)
-        
-        let manageDevicesItem = NSMenuItem(title: "Manage Devices", action: #selector(showManageDevicesWindow), keyEquivalent: "")
-        manageDevicesItem.target = self
-        menu.addItem(manageDevicesItem)
-        
-        // Add quit item
-        menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-        
-        // print("Status bar menu update complete")
+
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Add Device", #selector(showAddDeviceWindow)))
+        menu.addItem(menuItem("Manage Devices", #selector(showManageDevicesWindow)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Quit", #selector(quitApp), key: "q"))
     }
-    
-    @objc func wakeDevice(_ sender: NSMenuItem) {
-        if let macAddress = sender.representedObject as? String {
-            // print("Menu item clicked: attempting to wake device \(sender.title) with MAC: \(macAddress)")
-            
-            DispatchQueue.global(qos: .userInitiated).async {
-                // First, try using Network framework
-                // print("Attempting primary wake method for MAC: \(macAddress)")
-                var success = WakeOnLAN.wakeDevice(macAddress: macAddress)
-                var method = "Network framework"
-                
-                // If that fails, try the socket-based implementation
-                if !success {
-                    // print("Primary method failed, retrying with Socket implementation...")
-                    success = WakeOnLAN.wakeDeviceWithSocketSimple(macAddress: macAddress)
-                    method = "Socket API"
-                }
-                
-                let finalResult = success
-                let finalMethod = method
-                
-                // print("Wake attempt completed: \(finalResult ? "SUCCESS" : "FAILED") using \(finalMethod)")
-                
-                DispatchQueue.main.async {
-                    // Show a notification to the user using modern UserNotifications framework
-                    let content = UNMutableNotificationContent()
-                    content.title = "Wake-on-LAN"
-                    
-                    if finalResult {
-                        content.body = "Successfully sent wake-up packet to \(sender.title) using \(finalMethod)"
-                        // print("Notification: Success - Wake packet sent to \(sender.title)")
-                    } else {
-                        content.body = "Failed to send wake-up packet to \(sender.title). Please check your network settings."
-                        // print("Notification: Failed - Could not send wake packet to \(sender.title)")
-                    }
-                    
-                    content.sound = UNNotificationSound.default
-                    
-                    // Create a request for immediate delivery
-                    let request = UNNotificationRequest(
-                        identifier: UUID().uuidString, 
-                        content: content, 
-                        trigger: nil
-                    )
-                    
-                    // Add the request to the notification center
-                    UNUserNotificationCenter.current().add(request) { error in}
-                }
+
+    private func menuItem(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        return item
+    }
+
+    // MARK: - Actions
+
+    @objc private func wakeDevice(_ sender: NSMenuItem) {
+        guard let mac = sender.representedObject as? String else { return }
+        let name = sender.title
+
+        Task.detached(priority: .userInitiated) {
+            let result = WakeOnLAN.wake(macAddress: mac)
+            let body: String
+            switch result {
+            case .success(let method):
+                body = "Successfully sent wake-up packet to \(name) using \(method.rawValue)"
+            case .failure:
+                body = "Failed to send wake-up packet to \(name). Please check your network settings."
             }
-        } else {
-            // print("Error: No MAC address associated with menu item \(sender.title)")
+            Self.postNotification(body: body)
         }
     }
-    
-    @objc func showAddDeviceWindow() {
-        DispatchQueue.main.async {
-            if self.addDeviceWindowController == nil {
-                let addDeviceView = AddDeviceView(viewContext: self.viewContext) {
-                    // This closure will be called when device is added
-                    self.updateMenu()
-                    self.addDeviceWindowController?.close()
-                    self.addDeviceWindowController = nil
-                }
-                
-                let hostingController = NSHostingController(rootView: addDeviceView)
-                let window = NSWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
-                    styleMask: [.titled, .closable],
-                    backing: .buffered,
-                    defer: false
-                )
-                window.title = "Add Device"
-                window.contentView = hostingController.view
-                window.center()
-                
-                self.addDeviceWindowController = NSWindowController(window: window)
+
+    nonisolated private static func postNotification(body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Wake-on-LAN"
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Logger.app.error("Failed to post notification: \(error, privacy: .public)")
             }
-            
-            self.addDeviceWindowController?.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
-    
-    @objc func showManageDevicesWindow() {
-        DispatchQueue.main.async {
-            if self.manageDeviceWindowController == nil {
-                let manageDevicesView = ManageDevicesView(viewContext: self.viewContext) {
-                    // This closure will be called when changes are made
-                    self.updateMenu()
-                }
-                
-                let hostingController = NSHostingController(rootView: manageDevicesView)
-                let window = NSWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-                    styleMask: [.titled, .closable, .resizable],
-                    backing: .buffered,
-                    defer: false
-                )
-                window.title = "Manage Devices"
-                window.contentView = hostingController.view
-                window.center()
-                
-                self.manageDeviceWindowController = NSWindowController(window: window)
+
+    @objc private func showAddDeviceWindow() {
+        if addDeviceWindow == nil {
+            let view = AddDeviceView { [weak self] in
+                self?.addDeviceWindow?.close()
             }
-            
-            self.manageDeviceWindowController?.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            addDeviceWindow = makeWindow(title: "Add Device", size: NSSize(width: 300, height: 200),
+                                         resizable: false, root: view) { [weak self] in
+                self?.addDeviceWindow = nil
+            }
         }
+        present(addDeviceWindow)
     }
-    
-    // Safely fetch device list, handling potential Core Data errors
-    private func fetchDevicesSafely() -> [Device] {
-        // Verify that the view context is connected to a persistent store coordinator
-        guard let coordinator = viewContext.persistentStoreCoordinator else {
-            // print("Error: View context has no persistent store coordinator")
-            return []
+
+    @objc private func showManageDevicesWindow() {
+        if manageDevicesWindow == nil {
+            let view = ManageDevicesView { [weak self] in
+                self?.manageDevicesWindow?.close()
+            }
+            manageDevicesWindow = makeWindow(title: "Manage Devices", size: NSSize(width: 400, height: 300),
+                                             resizable: true, root: view) { [weak self] in
+                self?.manageDevicesWindow = nil
+            }
         }
-        
-        if coordinator.persistentStores.isEmpty {
-            // print("Error: Persistent store coordinator has no loaded stores")
-            return []
-        }
-        
-        let fetchRequest: NSFetchRequest<Device> = Device.fetchRequest()
-        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Device.name, ascending: true)]
-        
-        do {
-            return try viewContext.fetch(fetchRequest)
-        } catch {
-            // print("Failed to fetch devices: \(error)")
-            return []
-        }
+        present(manageDevicesWindow)
     }
-    
-    @objc func quitApp() {
-        NSApplication.shared.terminate(nil)
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
     }
-} 
+
+    // MARK: - Windows
+
+    /// Creates a window hosting a SwiftUI view. `onClose` fires however the window is closed
+    /// (button or red traffic light), so the next open starts with fresh state.
+    private func makeWindow<Content: View>(
+        title: String, size: NSSize, resizable: Bool, root: Content, onClose: @escaping () -> Void
+    ) -> NSWindow {
+        var style: NSWindow.StyleMask = [.titled, .closable]
+        if resizable { style.insert(.resizable) }
+
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: style, backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.contentViewController = NSHostingController(
+            rootView: root.environment(\.managedObjectContext, viewContext)
+        )
+        window.center()
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { onClose() }
+        }
+        return window
+    }
+
+    private func present(_ window: NSWindow?) {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+}
